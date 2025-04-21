@@ -1,0 +1,108 @@
+#include <SDL.h>
+#include <SDL_image.h>
+#include <iostream>
+
+const int SCREEN_WIDTH = 1200;
+const int SCREEN_HEIGHT = 600;
+
+SDL_Window* g_window = nullptr;
+SDL_Renderer* g_renderer = nullptr;
+SDL_Texture* g_background = nullptr;
+
+bool Init()
+{
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    {
+        std::cout << "SDL Init failed! " << SDL_GetError() << std::endl;
+        return false;
+    }
+
+    g_window = SDL_CreateWindow("SDL 2 Window",
+                                SDL_WINDOWPOS_CENTERED,
+                                SDL_WINDOWPOS_CENTERED,
+                                SCREEN_WIDTH,
+                                SCREEN_HEIGHT,
+                                SDL_WINDOW_SHOWN);
+    if (!g_window)
+    {
+        std::cout << "Window creation failed! " << SDL_GetError() << std::endl;
+        return false;
+    }
+
+    g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_ACCELERATED);
+    if (!g_renderer)
+    {
+        std::cout << "Renderer creation failed! " << SDL_GetError() << std::endl;
+        return false;
+    }
+
+    int imgFlags = IMG_INIT_PNG;
+    if (!(IMG_Init(imgFlags) & imgFlags))
+    {
+        std::cout << "SDL_image init failed! " << IMG_GetError() << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+SDL_Texture* LoadTexture(const std::string& path)
+{
+    SDL_Surface* loadedSurface = IMG_Load(path.c_str());
+    if (!loadedSurface)
+    {
+        std::cout << "Image load failed! " << IMG_GetError() << std::endl;
+        return nullptr;
+    }
+
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(g_renderer, loadedSurface);
+    SDL_FreeSurface(loadedSurface);
+
+    return texture;
+
+}
+
+void CleanUp()
+{
+    if (g_background) SDL_DestroyTexture(g_background);
+    if (g_renderer) SDL_DestroyRenderer(g_renderer);
+    if (g_window) SDL_DestroyWindow(g_window);
+    IMG_Quit();
+    SDL_Quit();
+}
+
+int main(int argc, char* argv[])
+{
+    if (!Init())
+        return -1;
+
+    // Đảm bảo file ảnh nằm cùng thư mục với file .exe hoặc chỉnh lại đường dẫn
+    g_background = LoadTexture("bkground.png");
+    if (!g_background)
+        return -1;
+
+    g_player = LoadTexture("player.png");
+    if (!g_player)
+    return -1;
+
+    bool isQuit = false;
+    SDL_Event e;
+
+    while (!isQuit)
+    {
+        while (SDL_PollEvent(&e))
+        {
+            if (e.type == SDL_QUIT)
+            {
+                isQuit = true;
+            }
+        }
+
+        SDL_RenderClear(g_renderer);
+        SDL_RenderCopy(g_renderer, g_background, nullptr, nullptr);  // Vẽ ảnh nền
+        SDL_RenderPresent(g_renderer); // Hiển thị lên màn hình
+    }
+
+    CleanUp();
+    return 0;
+}
