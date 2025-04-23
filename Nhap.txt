@@ -1,13 +1,64 @@
+1.
 #include <SDL.h>
 #include <SDL_image.h>
 #include <iostream>
+#include "boss.h"
 
 const int SCREEN_WIDTH = 1200;
 const int SCREEN_HEIGHT = 600;
+int PLAYER_SPEED = 5;
+
+const int RUN_FRAME_COUNT = 4;
+const int ATTACK_FRAME_COUNT = 4;
+const int JUMP_FRAME_COUNT = 12;
+const int BLOCK_FRAME_COUNT = 1;
+
+SDL_Texture* runFrames[RUN_FRAME_COUNT];
+SDL_Texture* attackFrames[ATTACK_FRAME_COUNT];
+SDL_Texture* jumpFrames[JUMP_FRAME_COUNT];
+SDL_Texture* blockFrames[BLOCK_FRAME_COUNT];
+SDL_Texture* platformTexture = nullptr;
+
+int currentRunFrame = 0;
+int currentAttackFrame = 0;
+int currentJumpFrame = 0;
+int currentBlockFrame = 0;
+
+Uint32 lastFrameTime = 0;
+const Uint32 FRAME_DELAY = 100;
 
 SDL_Window* g_window = nullptr;
 SDL_Renderer* g_renderer = nullptr;
 SDL_Texture* g_background = nullptr;
+SDL_Texture* g_playerIdle = nullptr;
+
+const int PLATFORM_COUNT = 3;
+SDL_Rect platforms[PLATFORM_COUNT] = {
+    {300, 350, 200, 20},
+    {600, 300, 150, 20},
+    {900, 400, 180, 20}
+};
+
+bool isJumping = false;
+bool isDoubleJumping = false;
+bool isAttacking = false;
+bool isBlocking = false;
+bool facingRight = true;
+bool isDashing = false;
+bool canDash = true;
+
+int dashSpeed = 15;
+int dashDuration = 200;
+Uint32 dashStartTime = 0;
+
+int verticalVelocity = 0;
+const int GRAVITY = 1;
+const int JUMP_STRENGTH = -20;
+bool isOnGround = false;
+
+// Dữ liệu thanh máu
+int health = 100;
+const int maxHealth = 100;
 
 bool Init()
 {
@@ -17,7 +68,7 @@ bool Init()
         return false;
     }
 
-    g_window = SDL_CreateWindow("SDL 2 Window",
+    g_window = SDL_CreateWindow("SDL2 Jump & Dash",
                                 SDL_WINDOWPOS_CENTERED,
                                 SDL_WINDOWPOS_CENTERED,
                                 SCREEN_WIDTH,
@@ -36,8 +87,7 @@ bool Init()
         return false;
     }
 
-    int imgFlags = IMG_INIT_PNG;
-    if (!(IMG_Init(imgFlags) & imgFlags))
+    if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG))
     {
         std::cout << "SDL_image init failed! " << IMG_GetError() << std::endl;
         return false;
@@ -48,22 +98,57 @@ bool Init()
 
 SDL_Texture* LoadTexture(const std::string& path)
 {
-    SDL_Surface* loadedSurface = IMG_Load(path.c_str());
-    if (!loadedSurface)
+    SDL_Surface* surface = IMG_Load(path.c_str());
+    if (!surface)
     {
-        std::cout << "Image load failed! " << IMG_GetError() << std::endl;
+        std::cout << "Failed to load: " << path << " | " << IMG_GetError() << std::endl;
         return nullptr;
     }
-
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(g_renderer, loadedSurface);
-    SDL_FreeSurface(loadedSurface);
-
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(g_renderer, surface);
+    SDL_FreeSurface(surface);
     return texture;
+}
 
+bool LoadFrames()
+{
+    for (int i = 0; i < RUN_FRAME_COUNT; ++i)
+    {
+        runFrames[i] = LoadTexture("run" + std::to_string(i + 1) + ".png");
+        if (!runFrames[i]) return false;
+    }
+
+    for (int i = 0; i < ATTACK_FRAME_COUNT; ++i)
+    {
+        attackFrames[i] = LoadTexture("attack" + std::to_string(i + 1) + ".png");
+        if (!attackFrames[i]) return false;
+    }
+
+    for (int i = 0; i < JUMP_FRAME_COUNT; ++i)
+    {
+        jumpFrames[i] = LoadTexture("jump" + std::to_string(i + 1) + ".png");
+        if (!jumpFrames[i]) return false;
+    }
+
+    blockFrames[0] = LoadTexture("block1.png");
+    if (!blockFrames[0]) return false;
+
+    platformTexture = LoadTexture("platform.png");
+    if (!platformTexture) return false;
+
+    return true;
 }
 
 void CleanUp()
 {
+    for (int i = 0; i < RUN_FRAME_COUNT; ++i)
+        if (runFrames[i]) SDL_DestroyTexture(runFrames[i]);
+    for (int i = 0; i < ATTACK_FRAME_COUNT; ++i)
+        if (attackFrames[i]) SDL_DestroyTexture(attackFrames[i]);
+    for (int i = 0; i < JUMP_FRAME_COUNT; ++i)
+        if (jumpFrames[i]) SDL_DestroyTexture(jumpFrames[i]);
+    if (blockFrames[0]) SDL_DestroyTexture(blockFrames[0]);
+    if (platformTexture) SDL_DestroyTexture(platformTexture);
+    if (g_playerIdle) SDL_DestroyTexture(g_playerIdle);
     if (g_background) SDL_DestroyTexture(g_background);
     if (g_renderer) SDL_DestroyRenderer(g_renderer);
     if (g_window) SDL_DestroyWindow(g_window);
@@ -71,38 +156,511 @@ void CleanUp()
     SDL_Quit();
 }
 
+bool CheckPlatformCollision(SDL_Rect& player)
+{
+    for (int i = 0; i < PLATFORM_COUNT; ++i)
+    {
+        SDL_Rect p = platforms[i];
+        if (player.y + player.h <= p.y + 10 &&
+            player.y + player.h + verticalVelocity >= p.y &&
+            player.x + player.w > p.x &&
+            player.x < p.x + p.w)
+        {
+            player.y = p.y - player.h;
+            verticalVelocity = 0;
+            isJumping = false;
+            isDoubleJumping = false;
+            isOnGround = true;
+            canDash = true;
+            return true;
+        }
+    }
+    return false;
+}
+
 int main(int argc, char* argv[])
 {
-    if (!Init())
-        return -1;
-
-    // Đảm bảo file ảnh nằm cùng thư mục với file .exe hoặc chỉnh lại đường dẫn
+    if (!Init()) return -1;
     g_background = LoadTexture("bkground.png");
-    if (!g_background)
-        return -1;
+    if (!g_background) return -1;
+    g_playerIdle = LoadTexture("player.png");
+    if (!g_playerIdle) return -1;
+    if (!LoadFrames()) return -1;
 
-    g_player = LoadTexture("player.png");
-    if (!g_player)
-    return -1;
-
+    SDL_Rect playerRect = {100, 400, 100, 100};
     bool isQuit = false;
     SDL_Event e;
+    bool moveLeft = false, moveRight = false;
 
     while (!isQuit)
     {
         while (SDL_PollEvent(&e))
         {
-            if (e.type == SDL_QUIT)
+            if (e.type == SDL_QUIT) isQuit = true;
+            else if (e.type == SDL_KEYDOWN)
             {
-                isQuit = true;
+                switch (e.key.keysym.sym)
+                {
+                    case SDLK_a: moveLeft = true; facingRight = false; break;
+                    case SDLK_d: moveRight = true; facingRight = true; break;
+                    case SDLK_SPACE:
+                        if (isOnGround)
+                        {
+                            isJumping = true;
+                            verticalVelocity = JUMP_STRENGTH;
+                            isOnGround = false;
+                        }
+                        else if (!isDoubleJumping)
+                        {
+                            isDoubleJumping = true;
+                            verticalVelocity = JUMP_STRENGTH;
+                        }
+                        break;
+                    case SDLK_j:
+                        if (!isAttacking)
+                        {
+                            isAttacking = true;
+                            currentAttackFrame = 0;
+                            lastFrameTime = SDL_GetTicks();
+                        }
+                        break;
+                    case SDLK_k:
+                        if (!isBlocking)
+                        {
+                            isBlocking = true;
+                            currentBlockFrame = 0;
+                            lastFrameTime = SDL_GetTicks();
+                        }
+                        break;
+                    case SDLK_LSHIFT:
+                    case SDLK_RSHIFT:
+                        if (!isDashing && canDash)
+                        {
+                            isDashing = true;
+                            dashStartTime = SDL_GetTicks();
+                            canDash = false;
+                        }
+                        break;
+                }
+            }
+            else if (e.type == SDL_KEYUP)
+            {
+                switch (e.key.keysym.sym)
+                {
+                    case SDLK_a: moveLeft = false; break;
+                    case SDLK_d: moveRight = false; break;
+                    case SDLK_k: isBlocking = false; break;
+                }
             }
         }
 
+        // Dash movement
+        if (!isBlocking)
+        {
+            if (isDashing)
+            {
+                int speed = dashSpeed;
+                if (facingRight && playerRect.x + playerRect.w + speed < SCREEN_WIDTH)
+                    playerRect.x += speed;
+                else if (!facingRight && playerRect.x - speed > 0)
+                    playerRect.x -= speed;
+
+                if (SDL_GetTicks() - dashStartTime > dashDuration)
+                    isDashing = false;
+            }
+            else
+            {
+                if (moveLeft && playerRect.x > 0) playerRect.x -= PLAYER_SPEED;
+                if (moveRight && playerRect.x + playerRect.w < SCREEN_WIDTH) playerRect.x += PLAYER_SPEED;
+            }
+        }
+
+        if (!isDashing)
+        {
+            verticalVelocity += GRAVITY;
+            playerRect.y += verticalVelocity;
+        }
+
+        isOnGround = CheckPlatformCollision(playerRect);
+        if (playerRect.y + playerRect.h >= 500)
+        {
+            playerRect.y = 500 - playerRect.h;
+            verticalVelocity = 0;
+            isJumping = false;
+            isDoubleJumping = false;
+            isOnGround = true;
+            canDash = true;
+        }
+
+        // Render
         SDL_RenderClear(g_renderer);
-        SDL_RenderCopy(g_renderer, g_background, nullptr, nullptr);  // Vẽ ảnh nền
-        SDL_RenderPresent(g_renderer); // Hiển thị lên màn hình
+        SDL_RenderCopy(g_renderer, g_background, nullptr, nullptr);
+        for (int i = 0; i < PLATFORM_COUNT; ++i)
+            SDL_RenderCopy(g_renderer, platformTexture, nullptr, &platforms[i]);
+
+        // Vẽ thanh máu
+        int healthBarWidth = 400;  // Chiều rộng thanh máu
+        int healthBarHeight = 30;  // Chiều cao thanh máu
+
+        SDL_Rect healthBarRect = {10, 10, healthBarWidth, healthBarHeight};  // Vị trí thanh máu
+
+        // Đo kích thước thanh máu tương ứng với sức khỏe
+        int healthWidth = (health / maxHealth) * healthBarWidth;
+        if (healthWidth < 0) healthWidth = 0;  // Đảm bảo sức khỏe không nhỏ hơn 0
+
+        // Vẽ nền của thanh máu
+        SDL_SetRenderDrawColor(g_renderer, 50, 50, 50, 255);  // Màu nền (xám đậm)
+        SDL_RenderFillRect(g_renderer, &healthBarRect);
+
+        // Vẽ thanh máu (màu xanh lục hoặc đỏ nếu dưới 30%)
+        SDL_Rect healthRect = {healthBarRect.x, healthBarRect.y, healthWidth, healthBarRect.h};
+        if (health < maxHealth * 0.3) {
+            SDL_SetRenderDrawColor(g_renderer, 255, 0, 0, 255);  // Màu đỏ khi máu dưới 30%
+        } else {
+            SDL_SetRenderDrawColor(g_renderer, 0, 255, 0, 255);  // Màu xanh lục khi máu đầy
+        }
+        SDL_RenderFillRect(g_renderer, &healthRect);
+
+        // Vẽ nhân vật
+        SDL_RendererFlip flip = facingRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
+        Uint32 currentTime = SDL_GetTicks();
+
+        if (isBlocking)
+        {
+            SDL_RenderCopyEx(g_renderer, blockFrames[0], nullptr, &playerRect, 0, nullptr, flip);
+        }
+        else if (isDashing)
+        {
+            SDL_RenderCopyEx(g_renderer, runFrames[RUN_FRAME_COUNT - 1], nullptr, &playerRect, 0, nullptr, flip);
+        }
+        else if (isAttacking)
+        {
+            if (currentTime > lastFrameTime + FRAME_DELAY)
+            {
+                lastFrameTime = currentTime;
+                currentAttackFrame++;
+                if (currentAttackFrame >= ATTACK_FRAME_COUNT)
+                {
+                    isAttacking = false;
+                    currentAttackFrame = 0;
+                }
+            }
+            SDL_RenderCopyEx(g_renderer, attackFrames[currentAttackFrame], nullptr, &playerRect, 0, nullptr, flip);
+        }
+        else if (isJumping || isDoubleJumping)
+        {
+            if (currentTime > lastFrameTime + FRAME_DELAY)
+            {
+                lastFrameTime = currentTime;
+                currentJumpFrame = (currentJumpFrame + 1) % JUMP_FRAME_COUNT;
+            }
+            SDL_RenderCopyEx(g_renderer, jumpFrames[currentJumpFrame], nullptr, &playerRect, 0, nullptr, flip);
+        }
+        else if (moveLeft || moveRight)
+        {
+            if (currentTime > lastFrameTime + FRAME_DELAY)
+            {
+                lastFrameTime = currentTime;
+                currentRunFrame = (currentRunFrame + 1) % RUN_FRAME_COUNT;
+            }
+            SDL_RenderCopyEx(g_renderer, runFrames[currentRunFrame], nullptr, &playerRect, 0, nullptr, flip);
+        }
+        else
+        {
+            SDL_RenderCopyEx(g_renderer, g_playerIdle, nullptr, &playerRect, 0, nullptr, flip);
+        }
+
+        SDL_RenderPresent(g_renderer);
+        SDL_Delay(16);
+
+
+
     }
 
     CleanUp();
     return 0;
 }
+
+
+
+
+
+2. 
+#include <SDL.h>
+#include <SDL_image.h>
+#include <iostream>
+#include <string>
+#include "boss.h"
+
+
+const int SCREEN_WIDTH = 1200;
+const int SCREEN_HEIGHT = 600;
+const int PLAYER_SPEED = 5;
+const int GRAVITY = 1;
+const int JUMP_STRENGTH = -18;
+
+// Frame counts
+const int RUN_FRAME_COUNT = 8;
+const int ATTACK_FRAME_COUNT = 6;
+const int JUMP_FRAME_COUNT = 12;
+const int BLOCK_FRAME_COUNT = 2;
+
+// Thay thế giả định: mỗi sprite sheet có width đúng bằng số frame * frame width
+// Bạn cần chỉnh lại nếu width ảnh của bạn KHÔNG như thế này:
+const int RUN_FRAME_WIDTH = 128;     // 128 * 8 = 1024
+const int RUN_FRAME_HEIGHT = 128;
+
+const int ATTACK_FRAME_WIDTH = 128;  // 128 * 6 = 768
+const int ATTACK_FRAME_HEIGHT = 128;
+
+const int JUMP_FRAME_WIDTH = 128;    // 128 * 12 = 1536
+const int JUMP_FRAME_HEIGHT = 128;
+
+const int BLOCK_FRAME_WIDTH = 128;   // 128 * 2 = 256
+const int BLOCK_FRAME_HEIGHT = 128;
+
+const Uint32 FRAME_DELAY = 70;
+
+SDL_Window* g_window = nullptr;
+SDL_Renderer* g_renderer = nullptr;
+SDL_Texture* g_background = nullptr;
+SDL_Texture* g_playerIdle = nullptr;
+SDL_Texture* runSheet = nullptr;
+SDL_Texture* attackSheet = nullptr;
+SDL_Texture* jumpSheet = nullptr;
+SDL_Texture* blockSheet = nullptr;
+SDL_Texture* platformTexture = nullptr;
+
+
+SDL_Rect platforms[] = {
+    {300, 350, 200, 20},
+    {600, 300, 150, 20},
+    {900, 400, 180, 20}
+};
+
+int currentRunFrame = 0;
+int currentAttackFrame = 0;
+int currentJumpFrame = 0;
+Uint32 lastFrameTime = 0;
+
+int verticalVelocity = 0;
+bool isJumping = false;
+bool isDoubleJumping = false;
+bool isAttacking = false;
+bool isBlocking = false;
+bool isOnGround = false;
+bool isDashing = false;
+bool canDash = true;
+bool facingRight = true;
+
+int dashSpeed = 15;
+int dashDuration = 200;
+Uint32 dashStartTime = 0;
+
+int health = 100;
+const int maxHealth = 100;
+
+bool Init() {
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) return false;
+    g_window = SDL_CreateWindow("SDL2 Spritesheet Animation", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    if (!g_window) return false;
+    g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_ACCELERATED);
+    if (!g_renderer) return false;
+    if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) return false;
+    return true;
+}
+
+SDL_Texture* LoadTexture(const std::string& path) {
+    SDL_Surface* surface = IMG_Load(path.c_str());
+    if (!surface) {
+        std::cout << "IMG_Load Error: " << IMG_GetError() << " (file: " << path << ")\n";
+        return nullptr;
+    }
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(g_renderer, surface);
+    SDL_FreeSurface(surface);
+    return texture;
+}
+
+bool LoadAssets() {
+    g_background = LoadTexture("bkground.png");
+    g_playerIdle = LoadTexture("player.png");
+    runSheet = LoadTexture("run_sheet.png");
+    attackSheet = LoadTexture("attack_sheet.png");
+    jumpSheet = LoadTexture("jump_sheet.png");
+    blockSheet = LoadTexture("block_sheet.png");
+    platformTexture = LoadTexture("platform.png");
+    return g_background && g_playerIdle && runSheet && attackSheet && jumpSheet && blockSheet && platformTexture;
+}
+
+void CleanUp() {
+    SDL_DestroyTexture(g_background);
+    SDL_DestroyTexture(g_playerIdle);
+    SDL_DestroyTexture(runSheet);
+    SDL_DestroyTexture(attackSheet);
+    SDL_DestroyTexture(jumpSheet);
+    SDL_DestroyTexture(blockSheet);
+    SDL_DestroyTexture(platformTexture);
+    SDL_DestroyRenderer(g_renderer);
+    SDL_DestroyWindow(g_window);
+    IMG_Quit();
+    SDL_Quit();
+}
+
+bool CheckPlatformCollision(SDL_Rect& player) {
+    for (auto& p : platforms) {
+        if (player.y + player.h <= p.y + 10 && player.y + player.h + verticalVelocity >= p.y && player.x + player.w > p.x && player.x < p.x + p.w) {
+            player.y = p.y - player.h;
+            verticalVelocity = 0;
+            isJumping = false;
+            isDoubleJumping = false;
+            isOnGround = true;
+            canDash = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+int main(int argc, char* argv[]) {
+    if (!Init() || !LoadAssets()) return -1;
+
+    SDL_Rect playerRect = {100, 400, 100, 100};
+    SDL_Event e;
+    bool quit = false;
+    bool moveLeft = false, moveRight = false;
+
+    while (!quit) {
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) quit = true;
+            else if (e.type == SDL_KEYDOWN) {
+                switch (e.key.keysym.sym) {
+                    case SDLK_a: moveLeft = true; facingRight = false; break;
+                    case SDLK_d: moveRight = true; facingRight = true; break;
+                    case SDLK_SPACE:
+                        if (isOnGround) {
+                            isJumping = true;
+                            verticalVelocity = JUMP_STRENGTH;
+                            isOnGround = false;
+                        } else if (!isDoubleJumping) {
+                            isDoubleJumping = true;
+                            verticalVelocity = JUMP_STRENGTH;
+                        }
+                        break;
+                    case SDLK_j:
+                        if (!isAttacking) {
+                            isAttacking = true;
+                            currentAttackFrame = 0;
+                            lastFrameTime = SDL_GetTicks();
+                        }
+                        break;
+                    case SDLK_k:
+                        isBlocking = true;
+                        break;
+                    case SDLK_LSHIFT:
+                    case SDLK_RSHIFT:
+                        if (!isDashing && canDash) {
+                            isDashing = true;
+                            dashStartTime = SDL_GetTicks();
+                            canDash = false;
+                        }
+                        break;
+                }
+            } else if (e.type == SDL_KEYUP) {
+                switch (e.key.keysym.sym) {
+                    case SDLK_a: moveLeft = false; break;
+                    case SDLK_d: moveRight = false; break;
+                    case SDLK_k: isBlocking = false; break;
+                }
+            }
+        }
+
+        // Movement
+        if (!isBlocking) {
+            if (isDashing) {
+                int speed = dashSpeed;
+                if (facingRight && playerRect.x + playerRect.w + speed < SCREEN_WIDTH) playerRect.x += speed;
+                else if (!facingRight && playerRect.x - speed > 0) playerRect.x -= speed;
+                if (SDL_GetTicks() - dashStartTime > dashDuration) isDashing = false;
+            } else {
+                if (moveLeft && playerRect.x > 0) playerRect.x -= PLAYER_SPEED;
+                if (moveRight && playerRect.x + playerRect.w < SCREEN_WIDTH) playerRect.x += PLAYER_SPEED;
+            }
+        }
+
+        verticalVelocity += GRAVITY;
+        playerRect.y += verticalVelocity;
+        isOnGround = CheckPlatformCollision(playerRect);
+
+        if (playerRect.y + playerRect.h >= 500) {
+            playerRect.y = 500 - playerRect.h;
+            verticalVelocity = 0;
+            isJumping = false;
+            isDoubleJumping = false;
+            isOnGround = true;
+            canDash = true;
+        }
+
+        SDL_RenderClear(g_renderer);
+        SDL_RenderCopy(g_renderer, g_background, nullptr, nullptr);
+
+        for (auto& p : platforms)
+            SDL_RenderCopy(g_renderer, platformTexture, nullptr, &p);
+
+        // Draw Health Bar
+        SDL_Rect healthBarRect = {10, 10, 400, 30};
+        int healthWidth = (health * 400) / maxHealth;
+        SDL_SetRenderDrawColor(g_renderer, 50, 50, 50, 255);
+        SDL_RenderFillRect(g_renderer, &healthBarRect);
+        SDL_SetRenderDrawColor(g_renderer, health < 30 ? 255 : 0, health < 30 ? 0 : 255, 0, 255);
+        SDL_Rect healthRect = {10, 10, healthWidth, 30};
+        SDL_RenderFillRect(g_renderer, &healthRect);
+
+        // Animation rendering
+        Uint32 currentTime = SDL_GetTicks();
+        SDL_Rect srcRect, destRect;
+        SDL_RendererFlip flip = facingRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
+
+        if (isBlocking) {
+            srcRect = {0, 0, BLOCK_FRAME_WIDTH, BLOCK_FRAME_HEIGHT};
+            destRect = {playerRect.x + (playerRect.w - BLOCK_FRAME_WIDTH) / 2, playerRect.y + (playerRect.h - BLOCK_FRAME_HEIGHT), BLOCK_FRAME_WIDTH, BLOCK_FRAME_HEIGHT};
+            SDL_RenderCopyEx(g_renderer, blockSheet, &srcRect, &destRect, 0, nullptr, flip);
+        } else if (isAttacking) {
+            if (currentTime > lastFrameTime + FRAME_DELAY) {
+                lastFrameTime = currentTime;
+                currentAttackFrame++;
+                if (currentAttackFrame >= ATTACK_FRAME_COUNT) {
+                    isAttacking = false;
+                    currentAttackFrame = 0;
+                }
+            }
+            srcRect = {currentAttackFrame * ATTACK_FRAME_WIDTH, 0, ATTACK_FRAME_WIDTH, ATTACK_FRAME_HEIGHT};
+            destRect = {playerRect.x + (playerRect.w - ATTACK_FRAME_WIDTH) / 2, playerRect.y + (playerRect.h - ATTACK_FRAME_HEIGHT), ATTACK_FRAME_WIDTH, ATTACK_FRAME_HEIGHT};
+            SDL_RenderCopyEx(g_renderer, attackSheet, &srcRect, &destRect, 0, nullptr, flip);
+        } else if (isJumping || isDoubleJumping) {
+            if (currentTime > lastFrameTime + FRAME_DELAY) {
+                lastFrameTime = currentTime;
+                currentJumpFrame = (currentJumpFrame + 1) % JUMP_FRAME_COUNT;
+            }
+            srcRect = {currentJumpFrame * JUMP_FRAME_WIDTH, 0, JUMP_FRAME_WIDTH, JUMP_FRAME_HEIGHT};
+            destRect = {playerRect.x + (playerRect.w - JUMP_FRAME_WIDTH) / 2, playerRect.y + (playerRect.h - JUMP_FRAME_HEIGHT), JUMP_FRAME_WIDTH, JUMP_FRAME_HEIGHT};
+            SDL_RenderCopyEx(g_renderer, jumpSheet, &srcRect, &destRect, 0, nullptr, flip);
+        } else if (moveLeft || moveRight) {
+            if (currentTime > lastFrameTime + FRAME_DELAY) {
+                lastFrameTime = currentTime;
+                currentRunFrame = (currentRunFrame + 1) % RUN_FRAME_COUNT;
+            }
+            srcRect = {currentRunFrame * RUN_FRAME_WIDTH, 0, RUN_FRAME_WIDTH, RUN_FRAME_HEIGHT};
+            destRect = {playerRect.x + (playerRect.w - RUN_FRAME_WIDTH) / 2, playerRect.y + (playerRect.h - RUN_FRAME_HEIGHT), RUN_FRAME_WIDTH, RUN_FRAME_HEIGHT};
+            SDL_RenderCopyEx(g_renderer, runSheet, &srcRect, &destRect, 0, nullptr, flip);
+        } else {
+            SDL_RenderCopyEx(g_renderer, g_playerIdle, nullptr, &playerRect, 0, nullptr, flip);
+        }
+
+        SDL_RenderPresent(g_renderer);
+        SDL_Delay(16);
+    }
+
+    CleanUp();
+    return 0;
+}
+
