@@ -5,95 +5,73 @@
 #include <cstdlib>
 #include <ctime>
 #include "boss.h"
+#include "player.h"
 
-// Screen and player constants
+// Screen dimensions
 const int SCREEN_WIDTH = 1200;
 const int SCREEN_HEIGHT = 600;
-const int PLAYER_SPEED = 5;
-const int GRAVITY = 1;
-const int JUMP_STRENGTH = -18;
-
-// Player frame counts
-const int RUN_FRAME_COUNT = 8;
-const int ATTACK_FRAME_COUNT = 6;
-const int JUMP_FRAME_COUNT = 12;
-const int BLOCK_FRAME_COUNT = 2;
-
-// Player frame dimensions
-const int RUN_FRAME_WIDTH = 128;
-const int RUN_FRAME_HEIGHT = 128;
-const int ATTACK_FRAME_WIDTH = 128;
-const int ATTACK_FRAME_HEIGHT = 128;
-const int JUMP_FRAME_WIDTH = 128;
-const int JUMP_FRAME_HEIGHT = 128;
-const int BLOCK_FRAME_WIDTH = 128;
-const int BLOCK_FRAME_HEIGHT = 128;
-
-// Boss frame counts
-const int BOSS_RUN_FRAME_COUNT = 8;
-const int BOSS_ATTACK_FRAME_COUNT = 6;
-const int BOSS_JUMP_FRAME_COUNT = 12;
-const int BOSS_BLOCK_FRAME_COUNT = 2;
-
-// Boss frame dimensions
-const int BOSS_RUN_FRAME_WIDTH = 160;
-const int BOSS_RUN_FRAME_HEIGHT = 160;
-const int BOSS_ATTACK_FRAME_WIDTH = 160;
-const int BOSS_ATTACK_FRAME_HEIGHT = 160;
-const int BOSS_JUMP_FRAME_WIDTH = 160;
-const int BOSS_JUMP_FRAME_HEIGHT = 160;
-const int BOSS_BLOCK_FRAME_WIDTH = 160;
-const int BOSS_BLOCK_FRAME_HEIGHT = 160;
-
-const Uint32 FRAME_DELAY = 70;
 
 // Global SDL variables
 SDL_Window* g_window = nullptr;
 SDL_Renderer* g_renderer = nullptr;
-SDL_Texture* g_background = nullptr;
-SDL_Texture* g_playerIdle = nullptr;
-SDL_Texture* runSheet = nullptr;
-SDL_Texture* attackSheet = nullptr;
-SDL_Texture* jumpSheet = nullptr;
-SDL_Texture* blockSheet = nullptr;
+SDL_Texture* level1Background = nullptr;
+SDL_Texture* level2Background = nullptr;
+SDL_Texture* level3Background = nullptr;
 SDL_Texture* platformTexture = nullptr;
 SDL_Texture* heartTexture = nullptr;
-SDL_Texture* bossIdle = nullptr;
-SDL_Texture* bossRunSheet = nullptr;
-SDL_Texture* bossAttackSheet = nullptr;
-SDL_Texture* bossJumpSheet = nullptr;
-SDL_Texture* bossBlockSheet = nullptr;
+SDL_Texture* gameOverTexture = nullptr;
+SDL_Texture* levelCompleteTexture = nullptr;
 
-// Platforms
-SDL_Rect platforms[] = {
+// Boss textures cho các màn
+SDL_Texture* boss1Idle = nullptr;
+SDL_Texture* boss1RunSheet = nullptr;
+SDL_Texture* boss1AttackSheet = nullptr;
+SDL_Texture* boss1JumpSheet = nullptr;
+SDL_Texture* boss1BlockSheet = nullptr;
+SDL_Texture* boss1DamageSheet = nullptr;
+SDL_Texture* boss1DeathSheet = nullptr;
+SDL_Texture* boss2Idle = nullptr;
+SDL_Texture* boss2RunSheet = nullptr;
+SDL_Texture* boss2AttackSheet = nullptr;
+SDL_Texture* boss2JumpSheet = nullptr;
+SDL_Texture* boss2BlockSheet = nullptr;
+SDL_Texture* boss2DamageSheet = nullptr;
+SDL_Texture* boss2DeathSheet = nullptr;
+SDL_Texture* boss3Idle = nullptr;
+SDL_Texture* boss3RunSheet = nullptr;
+SDL_Texture* boss3AttackSheet = nullptr;
+SDL_Texture* boss3JumpSheet = nullptr;
+SDL_Texture* boss3BlockSheet = nullptr;
+SDL_Texture* boss3DamageSheet = nullptr;
+SDL_Texture* boss3DeathSheet = nullptr;
+
+// Platforms cho các màn
+SDL_Rect level1Platforms[] = {
     {300, 350, 200, 20},
     {600, 300, 150, 20},
     {900, 400, 180, 20}
 };
 
-// Player animation states
-int currentRunFrame = 0;
-int currentAttackFrame = 0;
-int currentJumpFrame = 0;
-Uint32 lastFrameTime = 0;
+SDL_Rect level2Platforms[] = {
+    {250, 380, 180, 20},
+    {550, 300, 200, 20},
+    {850, 350, 150, 20}
+};
 
-// Player physics and state
-int verticalVelocity = 0;
-bool isJumping = false;
-bool isDoubleJumping = false;
-bool isAttacking = false;
-bool isBlocking = false;
-bool isOnGround = false;
-bool isDashing = false;
-bool canDash = true;
-bool facingRight = true;
+SDL_Rect level3Platforms[] = {
+    {200, 360, 180, 20},
+    {500, 320, 200, 20},
+    {800, 380, 150, 20}
+};
 
-int dashSpeed = 15;
-int dashDuration = 200;
-Uint32 dashStartTime = 0;
-
-int health = 5;
-const int maxHealth = 5;
+// Game state
+int currentLevel = 1;
+bool levelTransition = false;
+bool showGameOver = false;
+bool showLevelComplete = false;
+const Uint32 FRAME_DELAY = 70;
+const int DEATH_FRAME_COUNT = 4;
+const Uint32 LEVEL_COMPLETE_DURATION = 3000; // Thời gian hiển thị hoạt ảnh kết thúc màn
 
 bool Init() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) return false;
@@ -116,228 +94,259 @@ SDL_Texture* LoadTexture(const std::string& path) {
     return texture;
 }
 
-bool LoadAssets() {
-    g_background = LoadTexture("bkground.png");
-    g_playerIdle = LoadTexture("player.png");
-    runSheet = LoadTexture("run_sheet.png");
-    attackSheet = LoadTexture("attack_sheet.png");
-    jumpSheet = LoadTexture("jump_sheet.png");
-    blockSheet = LoadTexture("block_sheet.png");
-    platformTexture = LoadTexture("platform.png");
-    heartTexture = LoadTexture("heart.png");
-    bossIdle = LoadTexture("boss_assets/idle.png");
-    bossRunSheet = LoadTexture("boss_assets/run.png");
-    bossAttackSheet = LoadTexture("boss_assets/attack.png");
-    bossJumpSheet = LoadTexture("boss_assets/jump.png");
-    bossBlockSheet = LoadTexture("boss_assets/block.png");
-    return g_background && g_playerIdle && runSheet && attackSheet && jumpSheet && blockSheet &&
-           platformTexture && heartTexture && bossIdle && bossRunSheet && bossAttackSheet && bossJumpSheet && bossBlockSheet;
+bool LoadAssets(SDL_Texture*& playerIdle, SDL_Texture*& runSheet, SDL_Texture*& attackSheet,
+                SDL_Texture*& jumpSheet, SDL_Texture*& blockSheet, SDL_Texture*& damageSheet,
+                SDL_Texture*& deathSheet) {
+    level1Background = LoadTexture("map_and_objects/level1_background.png");
+    level2Background = LoadTexture("map_and_objects/level2_background.png");
+    level3Background = LoadTexture("map_and_objects/level3_background.png");
+    platformTexture = LoadTexture("map_and_objects/platform.png");
+    heartTexture = LoadTexture("map_and_objects/heart.png");
+    gameOverTexture = LoadTexture("map_and_objects/game_over.png");
+    levelCompleteTexture = LoadTexture("map_and_objects/level_complete.png");
+    playerIdle = LoadTexture("player_assets/idle.png");
+    runSheet = LoadTexture("player_assets/run.png");
+    attackSheet = LoadTexture("player_assets/attack.png");
+    jumpSheet = LoadTexture("player_assets/jump.png");
+    blockSheet = LoadTexture("player_assets/block.png");
+    damageSheet = LoadTexture("player_assets/damage.png");
+    deathSheet = LoadTexture("player_assets/death.png");
+    // Boss màn 1
+    boss1Idle = LoadTexture("boss_assets/boss1/idle.png");
+    boss1RunSheet = LoadTexture("boss_assets/boss1/run.png");
+    boss1AttackSheet = LoadTexture("boss_assets/boss1/attack.png");
+    boss1JumpSheet = LoadTexture("boss_assets/boss1/jump.png");
+    boss1BlockSheet = LoadTexture("boss_assets/boss1/block.png");
+    boss1DamageSheet = LoadTexture("boss_assets/boss1/damage.png");
+    boss1DeathSheet = LoadTexture("boss_assets/boss1/death.png");
+    // Boss màn 2
+    boss2Idle = LoadTexture("boss_assets/boss2/idle.png");
+    boss2RunSheet = LoadTexture("boss_assets/boss2/run.png");
+    boss2AttackSheet = LoadTexture("boss_assets/boss2/attack.png");
+    boss2JumpSheet = LoadTexture("boss_assets/boss2/jump.png");
+    boss2BlockSheet = LoadTexture("boss_assets/boss2/block.png");
+    boss2DamageSheet = LoadTexture("boss_assets/boss2/damage.png");
+    boss2DeathSheet = LoadTexture("boss_assets/boss2/death.png");
+    // Boss màn 3
+    boss3Idle = LoadTexture("boss_assets/boss3/idle.png");
+    boss3RunSheet = LoadTexture("boss_assets/boss3/run.png");
+    boss3AttackSheet = LoadTexture("boss_assets/boss3/attack.png");
+    boss3JumpSheet = LoadTexture("boss_assets/boss3/jump.png");
+    boss3BlockSheet = LoadTexture("boss_assets/boss3/block.png");
+    boss3DamageSheet = LoadTexture("boss_assets/boss3/damage.png");
+    boss3DeathSheet = LoadTexture("boss_assets/boss3/death.png");
+    return level1Background && level2Background && level3Background && platformTexture && heartTexture &&
+           gameOverTexture && levelCompleteTexture && playerIdle && runSheet && attackSheet &&
+           jumpSheet && blockSheet && damageSheet && deathSheet &&
+           boss1Idle && boss1RunSheet && boss1AttackSheet && boss1JumpSheet && boss1BlockSheet &&
+           boss1DamageSheet && boss1DeathSheet &&
+           boss2Idle && boss2RunSheet && boss2AttackSheet && boss2JumpSheet && boss2BlockSheet &&
+           boss2DamageSheet && boss2DeathSheet &&
+           boss3Idle && boss3RunSheet && boss3AttackSheet && boss3JumpSheet && boss3BlockSheet &&
+           boss3DamageSheet && boss3DeathSheet;
 }
 
-void CleanUp() {
-    SDL_DestroyTexture(g_background);
-    SDL_DestroyTexture(g_playerIdle);
+void CleanUp(SDL_Texture* playerIdle, SDL_Texture* runSheet, SDL_Texture* attackSheet,
+             SDL_Texture* jumpSheet, SDL_Texture* blockSheet, SDL_Texture* damageSheet,
+             SDL_Texture* deathSheet) {
+    SDL_DestroyTexture(level1Background);
+    SDL_DestroyTexture(level2Background);
+    SDL_DestroyTexture(level3Background);
+    SDL_DestroyTexture(platformTexture);
+    SDL_DestroyTexture(heartTexture);
+    SDL_DestroyTexture(gameOverTexture);
+    SDL_DestroyTexture(levelCompleteTexture);
+    SDL_DestroyTexture(playerIdle);
     SDL_DestroyTexture(runSheet);
     SDL_DestroyTexture(attackSheet);
     SDL_DestroyTexture(jumpSheet);
     SDL_DestroyTexture(blockSheet);
-    SDL_DestroyTexture(platformTexture);
-    SDL_DestroyTexture(heartTexture);
-    SDL_DestroyTexture(bossIdle);
-    SDL_DestroyTexture(bossRunSheet);
-    SDL_DestroyTexture(bossAttackSheet);
-    SDL_DestroyTexture(bossJumpSheet);
-    SDL_DestroyTexture(bossBlockSheet);
+    SDL_DestroyTexture(damageSheet);
+    SDL_DestroyTexture(deathSheet);
+    SDL_DestroyTexture(boss1Idle);
+    SDL_DestroyTexture(boss1RunSheet);
+    SDL_DestroyTexture(boss1AttackSheet);
+    SDL_DestroyTexture(boss1JumpSheet);
+    SDL_DestroyTexture(boss1BlockSheet);
+    SDL_DestroyTexture(boss1DamageSheet);
+    SDL_DestroyTexture(boss1DeathSheet);
+    SDL_DestroyTexture(boss2Idle);
+    SDL_DestroyTexture(boss2RunSheet);
+    SDL_DestroyTexture(boss2AttackSheet);
+    SDL_DestroyTexture(boss2JumpSheet);
+    SDL_DestroyTexture(boss2BlockSheet);
+    SDL_DestroyTexture(boss2DamageSheet);
+    SDL_DestroyTexture(boss2DeathSheet);
+    SDL_DestroyTexture(boss3Idle);
+    SDL_DestroyTexture(boss3RunSheet);
+    SDL_DestroyTexture(boss3AttackSheet);
+    SDL_DestroyTexture(boss3JumpSheet);
+    SDL_DestroyTexture(boss3BlockSheet);
+    SDL_DestroyTexture(boss3DamageSheet);
+    SDL_DestroyTexture(boss3DeathSheet);
     SDL_DestroyRenderer(g_renderer);
     SDL_DestroyWindow(g_window);
     IMG_Quit();
     SDL_Quit();
 }
 
-bool CheckPlatformCollision(SDL_Rect& entity) {
-    bool onPlatform = false;
-    for (auto& p : platforms) {
-        if (entity.y + entity.h <= p.y + 20 &&
-            entity.y + entity.h + verticalVelocity >= p.y &&
-            entity.x + entity.w > p.x && entity.x < p.x + p.w &&
-            verticalVelocity > 0) {
-            entity.y = p.y - entity.h;
-            verticalVelocity = 0;
-            isOnGround = true;
-            isJumping = false;
-            isDoubleJumping = false;
-            canDash = true;
-            onPlatform = true;
-            break;
-        }
-    }
-    return onPlatform;
-}
-
 int main(int argc, char* argv[]) {
-    if (!Init() || !LoadAssets()) return -1;
+    if (!Init()) return -1;
 
     srand(static_cast<unsigned>(time(0)));
 
-    SDL_Rect playerRect = {100, 400, 100, 100};
+    // Load textures
+    SDL_Texture *playerIdle, *runSheet, *attackSheet, *jumpSheet, *blockSheet, *damageSheet, *deathSheet;
+    if (!LoadAssets(playerIdle, runSheet, attackSheet, jumpSheet, blockSheet, damageSheet, deathSheet)) {
+        CleanUp(playerIdle, runSheet, attackSheet, jumpSheet, blockSheet, damageSheet, deathSheet);
+        return -1;
+    }
+
+// Initialize player and boss (màn 1)
+    Player player(120, 400, playerIdle, runSheet, attackSheet, jumpSheet, blockSheet, damageSheet, deathSheet);
+    Boss boss(800, 0,
+              boss1RunSheet, 8, 128, 128,      // Run: 8 khung, 128x128
+              boss1AttackSheet, 5, 128, 128,   // Attack: 6 khung, 128x128
+              boss1JumpSheet, 9, 128, 128,    // Jump: 12 khung, 128x128
+              boss1BlockSheet, 2, 128, 128,    // Block: 2 khung, 128x128
+              boss1DamageSheet, 3, 128, 128,   // Damage: 2 khung, 128x128
+              boss1DeathSheet, 5, 128, 128);   // Death: 4 khung, 128x128
+
     SDL_Event e;
     bool quit = false;
-    bool moveLeft = false, moveRight = false;
 
-    Boss boss(800, 0, bossRunSheet, bossAttackSheet, bossJumpSheet, bossBlockSheet);
+    // Biến theo dõi trạng thái chết của boss và hoạt ảnh kết thúc màn
+    static bool bossDeathAnimationStarted = false;
+    static Uint32 bossDeathStartTime = 0;
+    static Uint32 levelCompleteStartTime = 0;
 
     while (!quit) {
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) quit = true;
-            else if (e.type == SDL_KEYDOWN) {
-                switch (e.key.keysym.sym) {
-                    case SDLK_a: moveLeft = true; facingRight = false; break;
-                    case SDLK_d: moveRight = true; facingRight = true; break;
-                    case SDLK_SPACE:
-                        if (isOnGround) {
-                            isJumping = true;
-                            verticalVelocity = JUMP_STRENGTH;
-                            isOnGround = false;
-                        } else if (!isDoubleJumping) {
-                            isDoubleJumping = true;
-                            verticalVelocity = JUMP_STRENGTH;
-                        }
-                        break;
-                    case SDLK_j:
-                        if (!isAttacking) {
-                            isAttacking = true;
-                            currentAttackFrame = 0;
-                            lastFrameTime = SDL_GetTicks();
-                        }
-                        break;
-                    case SDLK_k: isBlocking = true; break;
-                    case SDLK_LSHIFT:
-                    case SDLK_RSHIFT:
-                        if (!isDashing && canDash) {
-                            isDashing = true;
-                            dashStartTime = SDL_GetTicks();
-                            canDash = false;
-                        }
-                        break;
-                }
-            } else if (e.type == SDL_KEYUP) {
-                switch (e.key.keysym.sym) {
-                    case SDLK_a: moveLeft = false; break;
-                    case SDLK_d: moveRight = false; break;
-                    case SDLK_k: isBlocking = false; break;
-                }
-            }
-        }
-
-        if (!isBlocking) {
-            if (isDashing) {
-                int speed = dashSpeed;
-                if (facingRight && playerRect.x + playerRect.w + speed < SCREEN_WIDTH) playerRect.x += speed;
-                else if (!facingRight && playerRect.x - speed > 0) playerRect.x -= speed;
-                if (SDL_GetTicks() - dashStartTime > dashDuration) isDashing = false;
+            if (e.type == SDL_QUIT) {
+                quit = true;
+            } else if (e.type == SDL_KEYDOWN && showGameOver && e.key.keysym.sym == SDLK_ESCAPE) {
+                quit = true;
             } else {
-                if (moveLeft && playerRect.x > 0) playerRect.x -= PLAYER_SPEED;
-                if (moveRight && playerRect.x + playerRect.w < SCREEN_WIDTH) playerRect.x += PLAYER_SPEED;
+                player.HandleInput(e);
             }
         }
 
-        verticalVelocity += GRAVITY;
-        playerRect.y += verticalVelocity;
-        isOnGround = CheckPlatformCollision(playerRect);
+        if (!showGameOver && !levelTransition && !showLevelComplete) {
+            // Cập nhật player và boss
+            player.Update(currentLevel == 1 ? level1Platforms : (currentLevel == 2 ? level2Platforms : level3Platforms), 3);
+            boss.Update(player.GetRect(), currentLevel == 1 ? level1Platforms : (currentLevel == 2 ? level2Platforms : level3Platforms), 3);
 
-        if (playerRect.y + playerRect.h >= 500 && !isOnGround) {
-            playerRect.y = 500 - playerRect.h;
-            verticalVelocity = 0;
-            isJumping = false;
-            isDoubleJumping = false;
-            isOnGround = true;
-            canDash = true;
-        }
+            // Xử lý tấn công của boss
+            if (!player.IsDead() && boss.IsAttacking() && SDL_HasIntersection(&player.GetRect(), &boss.GetRect())) {
+                if (!player.IsBlocking() && !boss.HasDealtDamage()) {
+                    player.TakeDamage(1);
+                    boss.SetDealtDamage(true);
+                }
+            }
 
-        boss.Update(playerRect, platforms, sizeof(platforms)/sizeof(platforms[0]));
-
-        if (boss.IsAttacking() && SDL_HasIntersection(&playerRect, &boss.GetRect())) {
-            if (!isBlocking) {
-                health -= 1; // Giảm 1 máu (1 trái tim)
-                if (health < 0) health = 0;
+            // Nhân vật tấn công boss
+            if (player.IsAttacking() && SDL_HasIntersection(&player.GetRect(), &boss.GetRect())) {
+                if (!boss.IsBlocking()) {
+                    boss.ReduceHealth(1);
+                }
             }
         }
 
-        // Nhân vật tấn công boss
-        if (isAttacking && SDL_HasIntersection(&playerRect, &boss.GetRect())) {
-            if (!boss.IsBlocking()) {
-                boss.ReduceHealth(3); // Gây 3 sát thương
+        // Kiểm tra boss chết để bắt đầu hoạt ảnh chết
+        if (boss.GetHealth() <= 0 && !levelTransition && !showLevelComplete && !bossDeathAnimationStarted) {
+            bossDeathAnimationStarted = true;
+            bossDeathStartTime = SDL_GetTicks();
+        }
+
+        // Chuyển sang hoạt ảnh kết thúc màn sau khi hoạt ảnh chết hoàn tất
+        if (bossDeathAnimationStarted && !levelTransition && !showLevelComplete) {
+            if (SDL_GetTicks() - bossDeathStartTime >= DEATH_FRAME_COUNT * FRAME_DELAY) {
+                showLevelComplete = true;
+                levelCompleteStartTime = SDL_GetTicks();
             }
         }
 
+        // Chuyển màn sau khi hoạt ảnh kết thúc màn hoàn tất
+if (showLevelComplete && SDL_GetTicks() - levelCompleteStartTime >= LEVEL_COMPLETE_DURATION) {
+            levelTransition = true;
+            if (currentLevel == 1) {
+                currentLevel = 2;
+                player.Reset();
+                boss = Boss(800, 0,
+                            boss2RunSheet, 8, 128, 128,      // Run: 6 khung, 150x150
+                            boss2AttackSheet, 4, 128, 128,   // Attack: 5 khung, 160x160
+                            boss2JumpSheet, 7, 128, 128,    // Jump: 10 khung, 140x140
+                            boss2BlockSheet, 2, 128, 128,    // Block: 3 khung, 145x145
+                            boss2DamageSheet, 2, 128, 128,   // Damage: 3 khung, 150x150
+                            boss2DeathSheet, 6, 128, 128);   // Death: 5 khung, 150x150
+                levelTransition = false;
+                showLevelComplete = false;
+                bossDeathAnimationStarted = false;
+            } else if (currentLevel == 2) {
+                currentLevel = 3;
+                player.Reset();
+                boss = Boss(800, 0,
+                            boss3RunSheet, 7, 128, 128,      // Run: 7 khung, 140x140
+                            boss3AttackSheet, 5, 128, 128,   // Attack: 7 khung, 150x150
+                            boss3JumpSheet, 6, 128, 128,     // Jump: 8 khung, 130x130
+                            boss3BlockSheet, 1, 128, 128,    // Block: 2 khung, 140x140
+                            boss3DamageSheet, 2, 128, 128,   // Damage: 4 khung, 140x140
+                            boss3DeathSheet, 6, 128, 128);   // Death: 6 khung, 140x140
+                levelTransition = false;
+                showLevelComplete = false;
+                bossDeathAnimationStarted = false;
+            }
+        }
+
+        // Render
         SDL_RenderClear(g_renderer);
         SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
-        SDL_RenderCopy(g_renderer, g_background, nullptr, nullptr);
 
-        for (auto& p : platforms)
-            SDL_RenderCopy(g_renderer, platformTexture, nullptr, &p);
-
-        // Player health (hearts)
-        for (int i = 0; i < health; ++i) {
-            SDL_Rect heartRect = {10 + i * 40, 10, 32, 32};
-            SDL_RenderCopy(g_renderer, heartTexture, nullptr, &heartRect);
-        }
-
-        // Boss health bar
-        SDL_Rect bossHealthBarRect = {SCREEN_WIDTH - 410, 10, 400, 30};
-        int bossHealthWidth = (boss.GetHealth() * 400) / boss.GetMaxHealth();
-        SDL_SetRenderDrawColor(g_renderer, 50, 50, 50, 255);
-        SDL_RenderFillRect(g_renderer, &bossHealthBarRect);
-        SDL_SetRenderDrawColor(g_renderer, boss.GetHealth() < 30 ? 255 : 0, boss.GetHealth() < 30 ? 0 : 255, 0, 255);
-        SDL_Rect bossHealthRect = {SCREEN_WIDTH - 410, 10, bossHealthWidth, 30};
-        SDL_RenderFillRect(g_renderer, &bossHealthRect);
-
-        Uint32 currentTime = SDL_GetTicks();
-        SDL_Rect srcRect, destRect;
-        SDL_RendererFlip flip = facingRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
-
-        if (isBlocking) {
-            srcRect = {0, 0, BLOCK_FRAME_WIDTH, BLOCK_FRAME_HEIGHT};
-            destRect = {playerRect.x + (playerRect.w - BLOCK_FRAME_WIDTH) / 2, playerRect.y + (playerRect.h - BLOCK_FRAME_HEIGHT), BLOCK_FRAME_WIDTH, BLOCK_FRAME_HEIGHT};
-            SDL_RenderCopyEx(g_renderer, blockSheet, &srcRect, &destRect, 0, nullptr, flip);
-        } else if (isAttacking) {
-            if (currentTime > lastFrameTime + FRAME_DELAY) {
-                lastFrameTime = currentTime;
-                currentAttackFrame++;
-                if (currentAttackFrame >= ATTACK_FRAME_COUNT) {
-                    isAttacking = false;
-                    currentAttackFrame = 0;
-                }
-            }
-            srcRect = {currentAttackFrame * ATTACK_FRAME_WIDTH, 0, ATTACK_FRAME_WIDTH, ATTACK_FRAME_HEIGHT};
-            destRect = {playerRect.x + (playerRect.w - ATTACK_FRAME_WIDTH) / 2, playerRect.y + (playerRect.h - ATTACK_FRAME_HEIGHT), ATTACK_FRAME_WIDTH, ATTACK_FRAME_HEIGHT};
-            SDL_RenderCopyEx(g_renderer, attackSheet, &srcRect, &destRect, 0, nullptr, flip);
-        } else if (isJumping || isDoubleJumping) {
-            if (currentTime > lastFrameTime + FRAME_DELAY) {
-                lastFrameTime = currentTime;
-                currentJumpFrame = (currentJumpFrame + 1) % JUMP_FRAME_COUNT;
-            }
-            srcRect = {currentJumpFrame * JUMP_FRAME_WIDTH, 0, JUMP_FRAME_WIDTH, JUMP_FRAME_HEIGHT};
-            destRect = {playerRect.x + (playerRect.w - JUMP_FRAME_WIDTH) / 2, playerRect.y + (playerRect.h - JUMP_FRAME_HEIGHT), JUMP_FRAME_WIDTH, JUMP_FRAME_HEIGHT};
-            SDL_RenderCopyEx(g_renderer, jumpSheet, &srcRect, &destRect, 0, nullptr, flip);
-        } else if (moveLeft || moveRight) {
-            if (currentTime > lastFrameTime + FRAME_DELAY) {
-                lastFrameTime = currentTime;
-                currentRunFrame = (currentRunFrame + 1) % RUN_FRAME_COUNT;
-            }
-            srcRect = {currentRunFrame * RUN_FRAME_WIDTH, 0, RUN_FRAME_WIDTH, RUN_FRAME_HEIGHT};
-            destRect = {playerRect.x + (playerRect.w - RUN_FRAME_WIDTH) / 2, playerRect.y + (playerRect.h - RUN_FRAME_HEIGHT), RUN_FRAME_WIDTH, RUN_FRAME_HEIGHT};
-            SDL_RenderCopyEx(g_renderer, runSheet, &srcRect, &destRect, 0, nullptr, flip);
+        if (showGameOver) {
+            SDL_RenderCopy(g_renderer, gameOverTexture, nullptr, nullptr);
+            boss.Render(g_renderer, currentLevel == 1 ? boss1Idle : (currentLevel == 2 ? boss2Idle : boss3Idle), SDL_GetTicks());
+        } else if (showLevelComplete) {
+            SDL_RenderCopy(g_renderer, levelCompleteTexture, nullptr, nullptr);
         } else {
-            SDL_RenderCopyEx(g_renderer, g_playerIdle, nullptr, &playerRect, 0, nullptr, flip);
-        }
+            // Hiển thị background
+            SDL_Texture* currentBackground = currentLevel == 1 ? level1Background : (currentLevel == 2 ? level2Background : level3Background);
+            SDL_RenderCopy(g_renderer, currentBackground, nullptr, nullptr);
 
-        boss.Render(g_renderer, bossIdle, currentTime);
+            // Hiển thị platforms
+            SDL_Rect* currentPlatforms = currentLevel == 1 ? level1Platforms : (currentLevel == 2 ? level2Platforms : level3Platforms);
+            for (int i = 0; i < 3; ++i) {
+                SDL_RenderCopy(g_renderer, platformTexture, nullptr, &currentPlatforms[i]);
+            }
+
+            // Hiển thị sức khỏe của player
+            for (int i = 0; i < player.GetHealth(); ++i) {
+                SDL_Rect heartRect = {10 + i * 40, 10, 32, 32};
+                SDL_RenderCopy(g_renderer, heartTexture, nullptr, &heartRect);
+            }
+
+            // Hiển thị thanh sức khỏe của boss
+            SDL_Rect bossHealthBarRect = {SCREEN_WIDTH - 410, 10, 400, 30};
+            int bossHealthWidth = (boss.GetHealth() * 400) / boss.GetMaxHealth();
+            SDL_SetRenderDrawColor(g_renderer, 50, 50, 50, 255);
+            SDL_RenderFillRect(g_renderer, &bossHealthBarRect);
+            SDL_SetRenderDrawColor(g_renderer, boss.GetHealth() < 30 ? 255 : 0, boss.GetHealth() < 30 ? 0 : 255, 0, 255);
+            SDL_Rect bossHealthRect = {SCREEN_WIDTH - 410, 10, bossHealthWidth, 30};
+            SDL_RenderFillRect(g_renderer, &bossHealthRect);
+
+            // Render player và boss
+            player.Render(g_renderer);
+            boss.Render(g_renderer, currentLevel == 1 ? boss1Idle : (currentLevel == 2 ? boss2Idle : boss3Idle), SDL_GetTicks());
+
+            // Kiểm tra trạng thái chết của player để hiển thị Game Over
+            if (player.IsDead() && SDL_GetTicks() - bossDeathStartTime >= DEATH_FRAME_COUNT * FRAME_DELAY) {
+                showGameOver = true;
+            }
+        }
 
         SDL_RenderPresent(g_renderer);
         SDL_Delay(16);
     }
 
-    CleanUp();
+    CleanUp(playerIdle, runSheet, attackSheet, jumpSheet, blockSheet, damageSheet, deathSheet);
     return 0;
 }
