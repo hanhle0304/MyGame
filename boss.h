@@ -3,43 +3,52 @@
 
 #include <SDL.h>
 
+class Player; // Forward declaration
+
 class Boss {
 private:
     SDL_Rect rect;
     int health;
     int maxHealth;
     int verticalVelocity;
+    int horizontalDiveVelocity; // Vận tốc ngang khi lao chéo
     bool isJumping;
     bool isOnGround;
     bool facingRight;
-    bool isAttacking;
-    bool isBlocking;
+    bool isAttacking; // Dùng cho boss 2, 3
+    bool isDashing;   // Dùng cho lướt của boss 1
+    bool isDiving;    // Dùng cho lao chém của boss 1
     bool isTakingDamage;
     bool isDead;
+    bool isIdle;      // Trạng thái đứng yên sau khi lùi
+    bool isRetreating; // Trạng thái lùi lại sau chiêu
     bool hasDealtDamage;
     int currentRunFrame;
     int currentAttackFrame;
     int currentJumpFrame;
-    int currentBlockFrame;
     int currentDamageFrame;
     int currentDeathFrame;
+    int retreatStartX; // Vị trí x khi bắt đầu lùi
     Uint32 lastFrameTime;
+    Uint32 dashStartTime; // Thời điểm bắt đầu lướt
+    Uint32 diveStartTime; // Thời điểm bắt đầu lao chém
+    Uint32 lastAttackTime; // Thời điểm lần tấn công gần nhất
 
     // Texture cho các hành động
     SDL_Texture* runSheet;
     SDL_Texture* attackSheet;
     SDL_Texture* jumpSheet;
-    SDL_Texture* blockSheet;
     SDL_Texture* damageSheet;
     SDL_Texture* deathSheet;
+    SDL_Texture* diveSheet; // Hoạt ảnh cho lao chém
 
     // Số lượng khung hình cho mỗi hành động
     int runFrameCount;
     int attackFrameCount;
     int jumpFrameCount;
-    int blockFrameCount;
     int damageFrameCount;
     int deathFrameCount;
+    int diveFrameCount; // Số khung cho lao chém
 
     // Kích thước khung hình cho mỗi hành động
     int runFrameWidth;
@@ -48,22 +57,27 @@ private:
     int attackFrameHeight;
     int jumpFrameWidth;
     int jumpFrameHeight;
-    int blockFrameWidth;
-    int blockFrameHeight;
     int damageFrameWidth;
     int damageFrameHeight;
     int deathFrameWidth;
     int deathFrameHeight;
+    int diveFrameWidth;  // Chiều rộng khung lao chém
+    int diveFrameHeight; // Chiều cao khung lao chém
+
+    // Hằng số
+    static const Uint32 ATTACK_COOLDOWN = 3000; // Cooldown sau mỗi lần tấn công (ms)
+    static const int IDLE_DISTANCE = 600;       // Khoảng cách lý tưởng để kiểm tra tấn công
+    static const int RETREAT_DISTANCE = 250;   // Khoảng cách cố định để lùi sau chiêu
 
 public:
     Boss(int x, int y,
          SDL_Texture* run, int runCount, int runWidth, int runHeight,
          SDL_Texture* attack, int attackCount, int attackWidth, int attackHeight,
          SDL_Texture* jump, int jumpCount, int jumpWidth, int jumpHeight,
-         SDL_Texture* block, int blockCount, int blockWidth, int blockHeight,
          SDL_Texture* damage, int damageCount, int damageWidth, int damageHeight,
-         SDL_Texture* death, int deathCount, int deathWidth, int deathHeight);
-    void Update(const SDL_Rect& playerRect, SDL_Rect* platforms, int platformCount);
+         SDL_Texture* death, int deathCount, int deathWidth, int deathHeight,
+         SDL_Texture* dive, int diveCount, int diveWidth, int diveHeight);
+    void Update(const SDL_Rect& playerRect, SDL_Rect* platforms, int platformCount, int currentLevel, Player& player);
     void Render(SDL_Renderer* renderer, SDL_Texture* idleTexture, Uint32 currentTime);
     void ReduceHealth(int amount);
     void SetDealtDamage(bool value) { hasDealtDamage = value; }
@@ -72,7 +86,8 @@ public:
     int GetHealth() const { return health; }
     int GetMaxHealth() const { return maxHealth; }
     bool IsAttacking() const { return isAttacking; }
-    bool IsBlocking() const { return isBlocking; }
+    bool IsDashing() const { return isDashing; }
+    bool IsDiving() const { return isDiving; }
 };
 
 #endif

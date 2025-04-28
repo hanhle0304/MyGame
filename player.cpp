@@ -1,18 +1,19 @@
 #include "player.h"
 #include <SDL.h>
 
+using namespace std;
+
 // Constants
 const int SCREEN_WIDTH = 1200;
 const int SCREEN_HEIGHT = 600;
 const int PLAYER_SPEED = 5;
 const int GRAVITY = 1;
-const int JUMP_STRENGTH = -18;
+const int JUMP_STRENGTH = -20;
 
 // Player frame counts
 const int RUN_FRAME_COUNT = 8;
 const int ATTACK_FRAME_COUNT = 6;
 const int JUMP_FRAME_COUNT = 12;
-const int BLOCK_FRAME_COUNT = 2;
 const int DAMAGE_FRAME_COUNT = 2;
 const int DEATH_FRAME_COUNT = 3;
 
@@ -23,8 +24,6 @@ const int ATTACK_FRAME_WIDTH = 128;
 const int ATTACK_FRAME_HEIGHT = 128;
 const int JUMP_FRAME_WIDTH = 128;
 const int JUMP_FRAME_HEIGHT = 128;
-const int BLOCK_FRAME_WIDTH = 128;
-const int BLOCK_FRAME_HEIGHT = 128;
 const int DAMAGE_FRAME_WIDTH = 128;
 const int DAMAGE_FRAME_HEIGHT = 128;
 const int DEATH_FRAME_WIDTH = 128;
@@ -33,16 +32,16 @@ const int DEATH_FRAME_HEIGHT = 128;
 const Uint32 FRAME_DELAY = 70;
 
 Player::Player(int x, int y, SDL_Texture* idle, SDL_Texture* run, SDL_Texture* attack, SDL_Texture* jump,
-               SDL_Texture* block, SDL_Texture* damage, SDL_Texture* death)
+                SDL_Texture* damage, SDL_Texture* death)
     : rect{x, y, 120, 120}, health(5), maxHealth(5), verticalVelocity(0),
       isJumping(false), isDoubleJumping(false), isOnGround(false), facingRight(true),
-      isAttacking(false), isBlocking(false), isDashing(false), canDash(true),
+      isAttacking(false), isDashing(false), canDash(true),
       isTakingDamage(false), isDead(false),
       currentRunFrame(0), currentAttackFrame(0), currentJumpFrame(0),
       currentDamageFrame(0), currentDeathFrame(0), lastFrameTime(0),
       dashSpeed(15), dashDuration(200), dashStartTime(0),
       idleTexture(idle), runSheet(run), attackSheet(attack), jumpSheet(jump),
-      blockSheet(block), damageSheet(damage), deathSheet(death) {}
+      damageSheet(damage), deathSheet(death) {}
 
 void Player::HandleInput(SDL_Event& e) {
     if (isDead) return;
@@ -72,9 +71,6 @@ void Player::HandleInput(SDL_Event& e) {
                     lastFrameTime = SDL_GetTicks();
                 }
                 break;
-            case SDLK_k:
-                isBlocking = true;
-                break;
             case SDLK_LSHIFT:
             case SDLK_RSHIFT:
                 if (!isDashing && canDash) {
@@ -84,14 +80,8 @@ void Player::HandleInput(SDL_Event& e) {
                 }
                 break;
         }
-    } else if (e.type == SDL_KEYUP) {
-        switch (e.key.keysym.sym) {
-            case SDLK_k:
-                isBlocking = false;
-                break;
-        }
     }
-}
+} // <-- Thiếu dấu đóng này lúc nãy!!!
 
 void Player::Update(SDL_Rect* platforms, int platformCount) {
     if (isDead) return;
@@ -100,7 +90,7 @@ void Player::Update(SDL_Rect* platforms, int platformCount) {
     bool moveLeft = SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_A];
     bool moveRight = SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_D];
 
-    if (!isBlocking && !isTakingDamage) {
+    if (!isTakingDamage) {
         if (isDashing) {
             int speed = dashSpeed;
             if (facingRight && rect.x + rect.w + speed < SCREEN_WIDTH) rect.x += speed;
@@ -110,6 +100,11 @@ void Player::Update(SDL_Rect* platforms, int platformCount) {
             if (moveLeft && rect.x > 0) rect.x -= PLAYER_SPEED;
             if (moveRight && rect.x + rect.w < SCREEN_WIDTH) rect.x += PLAYER_SPEED;
         }
+    }
+
+    // Cập nhật trạng thái miễn nhiễm
+    if (isInvulnerable && SDL_GetTicks() - invulnerabilityStartTime >= INVULNERABILITY_DURATION) {
+        isInvulnerable = false;
     }
 
     // Vật lý
@@ -149,6 +144,7 @@ void Player::Render(SDL_Renderer* renderer) {
     Uint32 currentTime = SDL_GetTicks();
     SDL_Rect srcRect, destRect;
     SDL_RendererFlip flip = facingRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
+    SDL_Texture* currentTexture = nullptr;
 
     if (isDead) {
         if (currentTime > lastFrameTime + FRAME_DELAY) {
@@ -170,10 +166,6 @@ void Player::Render(SDL_Renderer* renderer) {
         srcRect = {currentDamageFrame * DAMAGE_FRAME_WIDTH, 0, DAMAGE_FRAME_WIDTH, DAMAGE_FRAME_HEIGHT};
         destRect = {rect.x + (rect.w - DAMAGE_FRAME_WIDTH) / 2, rect.y + (rect.h - DAMAGE_FRAME_HEIGHT), DAMAGE_FRAME_WIDTH, DAMAGE_FRAME_HEIGHT};
         SDL_RenderCopyEx(renderer, damageSheet, &srcRect, &destRect, 0, nullptr, flip);
-    } else if (isBlocking) {
-        srcRect = {0, 0, BLOCK_FRAME_WIDTH, BLOCK_FRAME_HEIGHT};
-        destRect = {rect.x + (rect.w - BLOCK_FRAME_WIDTH) / 2, rect.y + (rect.h - BLOCK_FRAME_HEIGHT), BLOCK_FRAME_WIDTH, BLOCK_FRAME_HEIGHT};
-        SDL_RenderCopyEx(renderer, blockSheet, &srcRect, &destRect, 0, nullptr, flip);
     } else if (isAttacking) {
         if (currentTime > lastFrameTime + FRAME_DELAY) {
             lastFrameTime = currentTime;
@@ -208,7 +200,7 @@ void Player::Render(SDL_Renderer* renderer) {
 }
 
 void Player::TakeDamage(int amount) {
-    if (isBlocking || isDead) return;
+    if (isDead || isInvulnerable) return;
     health -= amount;
     if (health <= 0) {
         health = 0;
@@ -217,6 +209,8 @@ void Player::TakeDamage(int amount) {
         lastFrameTime = SDL_GetTicks();
     } else {
         isTakingDamage = true;
+        isInvulnerable = true;
+        invulnerabilityStartTime = SDL_GetTicks();
         currentDamageFrame = 0;
         lastFrameTime = SDL_GetTicks();
     }
@@ -230,12 +224,12 @@ void Player::Reset() {
     isDoubleJumping = false;
     isOnGround = false;
     isAttacking = false;
-    isBlocking = false;
     isDashing = false;
     canDash = true;
     facingRight = true;
     isTakingDamage = false;
     isDead = false;
+    isInvulnerable = false;
     currentRunFrame = 0;
     currentAttackFrame = 0;
     currentJumpFrame = 0;
