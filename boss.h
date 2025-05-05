@@ -2,55 +2,64 @@
 #define BOSS_H
 
 #include <SDL.h>
+#include <vector>
 
 class Player; // Forward declaration
 
+struct Arrow {
+    SDL_Rect rect;
+    int velocity;
+    bool facingRight;
+    int frameWidth;
+    int frameHeight;
+    Arrow(int x, int y, bool facingRight, int fWidth, int fHeight)
+        : rect{x, y, fWidth, fHeight}, velocity(facingRight ? 12 : -12), facingRight(facingRight),
+          frameWidth(fWidth), frameHeight(fHeight) {}
+};
+
 class Boss {
-private:
+protected:
     SDL_Rect rect;
     int health;
     int maxHealth;
     int verticalVelocity;
-    int horizontalDiveVelocity; // Vận tốc ngang khi lao chéo
+    int horizontalDiveVelocity;
     bool isJumping;
     bool isOnGround;
     bool facingRight;
-    bool isAttacking; // Dùng cho boss 2, 3
-    bool isDashing;   // Dùng cho lướt của boss 1
-    bool isDiving;    // Dùng cho lao chém của boss 1
+    bool isAttacking;
+    bool isDashing;
+    bool isDiving;
     bool isTakingDamage;
     bool isDead;
-    bool isIdle;      // Trạng thái đứng yên sau khi lùi
-    bool isRetreating; // Trạng thái lùi lại sau chiêu
+    bool isIdle;
+    bool isRetreating;
     bool hasDealtDamage;
     int currentRunFrame;
     int currentAttackFrame;
     int currentJumpFrame;
     int currentDamageFrame;
     int currentDeathFrame;
-    int retreatStartX; // Vị trí x khi bắt đầu lùi
+    int retreatStartX;
     Uint32 lastFrameTime;
-    Uint32 dashStartTime; // Thời điểm bắt đầu lướt
-    Uint32 diveStartTime; // Thời điểm bắt đầu lao chém
-    Uint32 lastAttackTime; // Thời điểm lần tấn công gần nhất
+    Uint32 dashStartTime;
+    Uint32 diveStartTime;
+    Uint32 lastAttackTime;
 
-    // Texture cho các hành động
     SDL_Texture* runSheet;
     SDL_Texture* attackSheet;
     SDL_Texture* jumpSheet;
     SDL_Texture* damageSheet;
     SDL_Texture* deathSheet;
-    SDL_Texture* diveSheet; // Hoạt ảnh cho lao chém
+    SDL_Texture* diveSheet;
 
-    // Số lượng khung hình cho mỗi hành động
     int runFrameCount;
     int attackFrameCount;
     int jumpFrameCount;
     int damageFrameCount;
     int deathFrameCount;
-    int diveFrameCount; // Số khung cho lao chém
+    int diveFrameCount;
 
-    // Kích thước khung hình cho mỗi hành động
     int runFrameWidth;
     int runFrameHeight;
     int attackFrameWidth;
@@ -61,13 +70,18 @@ private:
     int damageFrameHeight;
     int deathFrameWidth;
     int deathFrameHeight;
-    int diveFrameWidth;  // Chiều rộng khung lao chém
-    int diveFrameHeight; // Chiều cao khung lao chém
+    int diveFrameWidth;
+    int diveFrameHeight;
 
-    // Hằng số
-    static const Uint32 ATTACK_COOLDOWN = 3000; // Cooldown sau mỗi lần tấn công (ms)
-    static const int IDLE_DISTANCE = 600;       // Khoảng cách lý tưởng để kiểm tra tấn công
-    static const int RETREAT_DISTANCE = 250;   // Khoảng cách cố định để lùi sau chiêu
+    static const Uint32 ATTACK_COOLDOWN = 2000;
+    static const Uint32 SHOOT_COOLDOWN = 2000;
+    static const int IDLE_DISTANCE = 600;
+    static const int RETREAT_DISTANCE = 400;
+
+    std::vector<Boss*> miniBosses;
+    bool hasSummonedMiniBoss;
+
+    void RenderHealthBar(SDL_Renderer* renderer); // Phương thức vẽ thanh máu
 
 public:
     Boss(int x, int y,
@@ -77,8 +91,9 @@ public:
          SDL_Texture* damage, int damageCount, int damageWidth, int damageHeight,
          SDL_Texture* death, int deathCount, int deathWidth, int deathHeight,
          SDL_Texture* dive, int diveCount, int diveWidth, int diveHeight);
-    void Update(const SDL_Rect& playerRect, SDL_Rect* platforms, int platformCount, int currentLevel, Player& player);
-    void Render(SDL_Renderer* renderer, SDL_Texture* idleTexture, Uint32 currentTime);
+    virtual ~Boss();
+    virtual void Update(const SDL_Rect& playerRect, SDL_Rect* platforms, int platformCount, int currentLevel, Player& player);
+    virtual void Render(SDL_Renderer* renderer, SDL_Texture* idleTexture, Uint32 currentTime);
     void ReduceHealth(int amount);
     void SetDealtDamage(bool value) { hasDealtDamage = value; }
     bool HasDealtDamage() const { return hasDealtDamage; }
@@ -88,6 +103,31 @@ public:
     bool IsAttacking() const { return isAttacking; }
     bool IsDashing() const { return isDashing; }
     bool IsDiving() const { return isDiving; }
+};
+
+class MiniBoss : public Boss {
+private:
+    bool isShooting;
+    Uint32 shootStartTime;
+    std::vector<Arrow> arrows;
+    SDL_Texture* arrowTexture;
+    SDL_Texture* shootSheet;
+    int shootFrameCount;
+    int shootFrameWidth;
+    int shootFrameHeight;
+
+public:
+    MiniBoss(int x, int y,
+             SDL_Texture* run, int runCount, int runWidth, int runHeight,
+             SDL_Texture* attack, int attackCount, int attackWidth, int attackHeight,
+             SDL_Texture* jump, int jumpCount, int jumpWidth, int jumpHeight,
+             SDL_Texture* damage, int damageCount, int damageWidth, int damageHeight,
+             SDL_Texture* death, int deathCount, int deathWidth, int deathHeight,
+             SDL_Texture* dive, int diveCount, int diveWidth, int diveHeight,
+             SDL_Texture* shoot, int shootCount, int shootWidth, int shootHeight,
+             SDL_Texture* arrow, int arrowWidth, int arrowHeight);
+    void Update(const SDL_Rect& playerRect, SDL_Rect* platforms, int platformCount, int currentLevel, Player& player) override;
+    void Render(SDL_Renderer* renderer, SDL_Texture* idleTexture, Uint32 currentTime) override;
 };
 
 #endif

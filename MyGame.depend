@@ -1,28 +1,46 @@
 # depslib dependency file v1.0
-1745831135 source:d:\project\mygame\main.cpp
+1746453144 source:d:\project\mygame\main.cpp
 	<SDL.h>
 	<SDL_image.h>
+	<SDL_ttf.h>
+	<SDL_mixer.h>
 	<iostream>
 	<string>
 	<cstdlib>
 	<ctime>
 	"boss.h"
 	"player.h"
+	"gui.h"
 
-1745844817 source:d:\project\mygame\boss.cpp
+1746453144 source:d:\project\mygame\boss.cpp
 	"boss.h"
 	"player.h"
 	<SDL.h>
 	<iostream>
 	<cmath>
 
-1745845168 d:\project\mygame\boss.h
+1746454337 d:\project\mygame\boss.h
+	<SDL.h>
+	<vector>
+
+1746438853 d:\project\mygame\player.h
 	<SDL.h>
 
-1745685861 d:\project\mygame\player.h
-	<SDL.h>
-
-1745832969 source:d:\project\mygame\player.cpp
+1746438357 source:d:\project\mygame\player.cpp
 	"player.h"
 	<SDL.h>
+
+1746453144 source:d:\project\mygame\gui.cpp
+	"gui.h"
+	<SDL.h>
+	<SDL_ttf.h>
+	<SDL_mixer.h>
+	<iostream>
+
+1746453144 d:\project\mygame\gui.h
+	<SDL.h>
+	<SDL_ttf.h>
+	<SDL_mixer.h>
+	<string>
+	<vector>
 

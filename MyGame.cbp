@@ -34,6 +34,8 @@
 		</Compiler>
 		<Unit filename="boss.cpp" />
 		<Unit filename="boss.h" />
+		<Unit filename="gui.cpp" />
+		<Unit filename="gui.h" />
 		<Unit filename="main.cpp" />
 		<Unit filename="player.cpp" />
 		<Unit filename="player.h" />

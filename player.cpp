@@ -33,7 +33,7 @@ const Uint32 FRAME_DELAY = 70;
 
 Player::Player(int x, int y, SDL_Texture* idle, SDL_Texture* run, SDL_Texture* attack, SDL_Texture* jump,
                 SDL_Texture* damage, SDL_Texture* death)
-    : rect{x, y, 120, 120}, health(5), maxHealth(5), verticalVelocity(0),
+    : rect{x, y, 120, 120}, health(7), maxHealth(7), verticalVelocity(0),
       isJumping(false), isDoubleJumping(false), isOnGround(false), facingRight(true),
       isAttacking(false), isDashing(false), canDash(true),
       isTakingDamage(false), isDead(false),
